@@ -31,6 +31,21 @@
 #include "hw/gpio/stm32l4x5_gpio.h"
 #include "hw/qdev-clock.h"
 #include "hw/misc/unimp.h"
+#include "hw/block/flash.h"
+#include "sysemu/blockdev.h"
+#include "qemu/log.h"
+
+#ifndef STM_SOC_ERR_DEBUG
+#define STM_SOC_ERR_DEBUG 1
+#endif
+
+#define DB_PRINT_L(lvl, fmt, args...) do { \
+    if (STM_SOC_ERR_DEBUG >= lvl) { \
+        qemu_log("%s: " fmt, __func__, ## args); \
+    } \
+} while (0)
+
+#define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
 #define FLASH_BASE_ADDRESS 0x08000000
 #define SRAM1_BASE_ADDRESS 0x20000000
@@ -40,6 +55,9 @@
 
 #define EXTI_ADDR 0x40010400
 #define SYSCFG_ADDR 0x40010000
+
+#define I2C_ADDR 0x40005400
+#define TSC_ADDR 0x40024000
 
 #define NUM_EXTI_IRQ 40
 /* Match exti line connections with their CPU IRQ number */
@@ -77,8 +95,17 @@ static const int exti_irq[NUM_EXTI_IRQ] = {
     -1, -1, -1, -1,         /* PVM[1..4] OR gate 1     */
     78                      /* LCD wakeup, Direct      */
 };
+
+static const uint32_t i2c_addr[] =   { 0x40005400, 0x40005800 };
+// static const int i2c_irq[] =   { 31, 32, 33, 34 };
+
 #define RCC_BASE_ADDRESS 0x40021000
 #define RCC_IRQ 5
+
+#define RTC_BASE_ADDRESS 0x40002800
+#define PWR_BASE_ADDRESS 0x40007000
+#define RNG_BASE_ADDRESS 0x50060800
+#define FLASH_MMIO_BASE_ADDRESS 0x40022000
 
 static const int exti_or_gates_out[NUM_EXTI_OR_GATES] = {
     23, 40, 63, 1,
@@ -128,10 +155,23 @@ static void stm32l4x5_soc_initfn(Object *obj)
     object_initialize_child(obj, "syscfg", &s->syscfg, TYPE_STM32L4X5_SYSCFG);
     object_initialize_child(obj, "rcc", &s->rcc, TYPE_STM32L4X5_RCC);
 
+    object_initialize_child(obj, "rtc", &s->rtc, TYPE_STM32L4X5_RTC);
+    object_initialize_child(obj, "pwr", &s->pwr, TYPE_STM32L4X5_PWR);
+    object_initialize_child(obj, "rng", &s->rng, TYPE_STM32L4X5_RNG);
+
+    for (unsigned i = 0; i < NUM_I2C; i++) {
+        object_initialize_child(obj, "i2c[*]", &s->i2c[i], TYPE_STM32L4X5_I2C);
+    }
+
+    object_initialize_child(obj, "tsc", &s->tsc, TYPE_STM32L4X5_TSC);
+    object_initialize_child(obj, "gpio-int", &s->gpio_int, TYPE_STM32L4X5_GPIO_INT);
+
     for (unsigned i = 0; i < NUM_GPIOS; i++) {
         g_autofree char *name = g_strdup_printf("gpio%c", 'a' + i);
         object_initialize_child(obj, name, &s->gpio[i], TYPE_STM32L4X5_GPIO);
     }
+
+    object_initialize_child(obj, "flash", &s->flash, TYPE_STM32L4X5_FLASH);
 }
 
 static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
@@ -142,18 +182,17 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     MemoryRegion *system_memory = get_system_memory();
     DeviceState *armv7m, *dev;
     SysBusDevice *busdev;
+    DriveInfo *dinfo;
     uint32_t pin_index;
 
-    if (!memory_region_init_rom(&s->flash, OBJECT(dev_soc), "flash",
-                                sc->flash_size, errp)) {
+    dinfo = drive_get(IF_MTD, 0, 0);
+    if (dinfo) {
+        qdev_prop_set_drive_err(DEVICE(&s->flash), "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+    } else {
+        error_setg(errp, "No MTD drive set");
         return;
     }
-    memory_region_init_alias(&s->flash_alias, OBJECT(dev_soc),
-                             "flash_boot_alias", &s->flash, 0,
-                             sc->flash_size);
-
-    memory_region_add_subregion(system_memory, FLASH_BASE_ADDRESS, &s->flash);
-    memory_region_add_subregion(system_memory, 0, &s->flash_alias);
 
     if (!memory_region_init_ram(&s->sram1, OBJECT(dev_soc), "SRAM1", SRAM1_SIZE,
                                 errp)) {
@@ -183,6 +222,29 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
         return;
     }
 
+    busdev = SYS_BUS_DEVICE(&s->flash);
+    if (!sysbus_realize(busdev, errp)) {
+        return;
+    }
+    sysbus_mmio_map(busdev, 0, FLASH_MMIO_BASE_ADDRESS);
+
+    memory_region_add_subregion(system_memory, FLASH_BASE_ADDRESS, &s->flash.container);
+
+    memory_region_init_alias(&s->flash_alias, OBJECT(dev_soc),
+                             "flash_boot_alias", &s->flash.container, 0,
+                             sc->flash_size);
+    memory_region_add_subregion(system_memory, 0, &s->flash_alias);
+
+    uint32_t memrmp = 0;
+    if (s->flash.swapped_banks) {
+        memrmp |= 0x100;
+    }
+
+    // if (!memory_region_init_rom(&s->flash, OBJECT(dev_soc), "flash",
+    //                             sc->flash_size, errp)) {
+    //     return;
+    // }
+
     /* GPIOs */
     for (unsigned i = 0; i < NUM_GPIOS; i++) {
         g_autofree char *name = g_strdup_printf("%c", 'A' + i);
@@ -206,6 +268,8 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     }
 
     /* System configuration controller */
+    dev = DEVICE(&s->syscfg);
+    qdev_prop_set_uint32(dev, "memrmp", memrmp);
     busdev = SYS_BUS_DEVICE(&s->syscfg);
     if (!sysbus_realize(busdev, errp)) {
         return;
@@ -220,6 +284,37 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
                                   pin_index));
         }
     }
+
+    /* I2C devices */
+    for (unsigned i = 0; i < NUM_I2C; i++) {
+        dev = DEVICE(&(s->i2c[i]));
+        qdev_prop_set_chr(dev, "chardev", serial_hd(i));
+        if (!sysbus_realize(SYS_BUS_DEVICE(&s->i2c[i]), errp)) {
+            return;
+        }
+        busdev = SYS_BUS_DEVICE(dev);
+        sysbus_mmio_map(busdev, 0, i2c_addr[i]);
+        // sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, i2c_irq[i * NUM_I2C]));
+    }
+
+    /* TSC */
+    dev = DEVICE(&(s->tsc));
+    qdev_prop_set_chr(dev, "chardev", serial_hd(2));
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->tsc), errp)) {
+        return;
+    }
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_mmio_map(busdev, 0, TSC_ADDR);
+    sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, 77));
+
+    /* GPIO_INT */
+    dev = DEVICE(&(s->gpio_int));
+    qdev_prop_set_chr(dev, "chardev", serial_hd(3));
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->gpio_int), errp)) {
+        return;
+    }
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(DEVICE(&s->exti), 6));
 
     /* EXTI device */
     busdev = SYS_BUS_DEVICE(&s->exti);
@@ -279,6 +374,28 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     sysbus_mmio_map(busdev, 0, RCC_BASE_ADDRESS);
     sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, RCC_IRQ));
 
+    /* PWR device */
+    busdev = SYS_BUS_DEVICE(&s->pwr);
+    if (!sysbus_realize(busdev, errp)) {
+        return;
+    }
+    sysbus_mmio_map(busdev, 0, PWR_BASE_ADDRESS);
+
+    /* RNG device */
+    busdev = SYS_BUS_DEVICE(&s->rng);
+    if (!sysbus_realize(busdev, errp)) {
+        return;
+    }
+    sysbus_mmio_map(busdev, 0, RNG_BASE_ADDRESS);
+
+    /* RTC device */
+    busdev = SYS_BUS_DEVICE(&s->rtc);
+    if (!sysbus_realize(busdev, errp)) {
+        return;
+    }
+    sysbus_mmio_map(busdev, 0, RTC_BASE_ADDRESS);
+    // sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, RCC_IRQ));
+
     /* APB1 BUS */
     create_unimplemented_device("TIM2",      0x40000000, 0x400);
     create_unimplemented_device("TIM3",      0x40000400, 0x400);
@@ -304,7 +421,6 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     /* RESERVED:    0x40006000, 0x400 */
     create_unimplemented_device("CAN1",      0x40006400, 0x400);
     /* RESERVED:    0x40006800, 0x400 */
-    create_unimplemented_device("PWR",       0x40007000, 0x400);
     create_unimplemented_device("DAC1",      0x40007400, 0x400);
     create_unimplemented_device("OPAMP",     0x40007800, 0x400);
     create_unimplemented_device("LPTIM1",    0x40007C00, 0x400);
@@ -342,11 +458,9 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("DMA2",      0x40020400, 0x400);
     /* RESERVED:    0x40020800, 0x800 */
     /* RESERVED:    0x40021400, 0xC00 */
-    create_unimplemented_device("FLASH",     0x40022000, 0x400);
     /* RESERVED:    0x40022400, 0xC00 */
     create_unimplemented_device("CRC",       0x40023000, 0x400);
     /* RESERVED:    0x40023400, 0x400 */
-    create_unimplemented_device("TSC",       0x40024000, 0x400);
 
     /* RESERVED:    0x40024400, 0x7FDBC00 */
 
@@ -355,7 +469,6 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("OTG_FS",    0x50000000, 0x40000);
     create_unimplemented_device("ADC",       0x50040000, 0x400);
     /* RESERVED:    0x50040400, 0x20400 */
-    create_unimplemented_device("RNG",       0x50060800, 0x400);
 
     /* AHB3 BUS */
     create_unimplemented_device("FMC",       0xA0000000, 0x1000);

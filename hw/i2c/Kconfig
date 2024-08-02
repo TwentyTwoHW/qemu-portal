@@ -26,6 +26,10 @@ config BITBANG_I2C
     bool
     select I2C
 
+config STM32L4X5_I2C
+    bool
+    select I2C
+
 config IMX_I2C
     bool
     select I2C

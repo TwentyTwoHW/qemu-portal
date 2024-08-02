@@ -44,3 +44,7 @@ config VHOST_USER_BLK
 
 config SWIM
     bool
+
+config STM32L4X5_FLASH
+    bool
+

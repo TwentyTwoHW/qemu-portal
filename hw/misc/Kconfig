@@ -100,6 +100,18 @@ config STM32L4X5_SYSCFG
 config STM32L4X5_RCC
     bool
 
+config STM32L4X5_PWR
+    bool
+
+config STM32L4X5_RNG
+    bool
+
+config STM32L4X5_TSC
+    bool
+
+config STM32L4X5_GPIOINT
+    bool
+
 config MIPS_ITU
     bool
 

@@ -34,17 +34,17 @@
 
 static void b_l475e_iot01a_init(MachineState *machine)
 {
-    const Stm32l4x5SocClass *sc;
+    // const Stm32l4x5SocClass *sc;
     DeviceState *dev;
 
     dev = qdev_new(TYPE_STM32L4X5XG_SOC);
     object_property_add_child(OBJECT(machine), "soc", OBJECT(dev));
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
-    sc = STM32L4X5_SOC_GET_CLASS(dev);
+    // sc = STM32L4X5_SOC_GET_CLASS(dev);
     armv7m_load_kernel(ARM_CPU(first_cpu),
                        machine->kernel_filename,
-                       0, sc->flash_size);
+                       0, 28 * 1024);
 }
 
 static void b_l475e_iot01a_machine_init(MachineClass *mc)

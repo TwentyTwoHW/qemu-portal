@@ -476,7 +476,14 @@ config STM32L4X5_SOC
     select STM32L4X5_EXTI
     select STM32L4X5_SYSCFG
     select STM32L4X5_RCC
+    select STM32L4X5_RTC
+    select STM32L4X5_PWR
+    select STM32L4X5_RNG
     select STM32L4X5_GPIO
+    select STM32L4X5_I2C
+    select STM32L4X5_TSC
+    select STM32L4X5_GPIOINT
+    select STM32L4X5_FLASH
 
 config XLNX_ZYNQMP_ARM
     bool

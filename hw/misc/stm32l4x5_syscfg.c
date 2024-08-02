@@ -28,6 +28,8 @@
 #include "migration/vmstate.h"
 #include "hw/misc/stm32l4x5_syscfg.h"
 #include "hw/gpio/stm32l4x5_gpio.h"
+#include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #define SYSCFG_MEMRMP 0x00
 #define SYSCFG_CFGR1 0x04
@@ -69,7 +71,7 @@ static void stm32l4x5_syscfg_hold_reset(Object *obj)
 {
     Stm32l4x5SyscfgState *s = STM32L4X5_SYSCFG(obj);
 
-    s->memrmp = 0x00000000;
+    // s->memrmp = 0x00000000;
     s->cfgr1 = 0x7C000001;
     s->exticr[0] = 0x00000000;
     s->exticr[1] = 0x00000000;
@@ -245,6 +247,11 @@ static const VMStateDescription vmstate_stm32l4x5_syscfg = {
     }
 };
 
+static Property stm32l4x5_syscfg_properties[] = {
+    DEFINE_PROP_UINT32("memrmp", Stm32l4x5SyscfgState, memrmp, 0),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void stm32l4x5_syscfg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -252,6 +259,8 @@ static void stm32l4x5_syscfg_class_init(ObjectClass *klass, void *data)
 
     dc->vmsd = &vmstate_stm32l4x5_syscfg;
     rc->phases.hold = stm32l4x5_syscfg_hold_reset;
+
+    device_class_set_props(dc, stm32l4x5_syscfg_properties);
 }
 
 static const TypeInfo stm32l4x5_syscfg_info[] = {
