@@ -60,8 +60,8 @@ static uint64_t stm32l4x5_rtc_read(void *opaque, hwaddr addr,
     case RTC_ISR:
         return s->rtc_isr;
     default:
-        if (addr >= 0x50 && addr < 0x50 + RTC_BKPR_REG_NUM) {
-            return s->rtc_bkpr[addr - 0x50];
+        if (addr >= 0x50 && addr < 0x50 + RTC_BKPR_REG_NUM * 4) {
+            return s->rtc_bkpr[(addr - 0x50) / 4];
         }
 
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -80,8 +80,8 @@ static void stm32l4x5_rtc_write(void *opaque, hwaddr addr,
 
     DB_PRINT("0x%x, 0x%"HWADDR_PRIx"\n", value, addr);
 
-    if (addr >= 0x50 && addr < 0x50 + RTC_BKPR_REG_NUM) {
-        s->rtc_bkpr[addr - 0x50] = value & (0xFFFF);
+    if (addr >= 0x50 && addr < 0x50 + RTC_BKPR_REG_NUM * 4) {
+        s->rtc_bkpr[(addr - 0x50) / 4] = value;
         return;
     }
 
