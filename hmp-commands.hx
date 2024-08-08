@@ -438,6 +438,19 @@ SRST
 ERST
 
     {
+        .name       = "system_wipe_rtc_bkpr",
+        .args_type  = "",
+        .params     = "",
+        .help       = "Wipe the RTC BKPR registers",
+        .cmd        = hmp_wipe_rtc_bkpr,
+    },
+
+SRST
+``system_wipe_rtc_bkpr``
+  Wipe RTC BKPR registers
+ERST
+
+    {
         .name       = "gdbserver",
         .args_type  = "device:s?",
         .params     = "[device]",

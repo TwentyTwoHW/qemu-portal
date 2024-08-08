@@ -249,6 +249,22 @@ void hmp_physical_memory_dump(Monitor *mon, const QDict *qdict)
     memory_dump(mon, count, format, size, addr, 1);
 }
 
+void hmp_wipe_rtc_bkpr(Monitor *mon, const QDict *qdict)
+{
+
+    CPUState *cs = mon_get_cpu(mon);
+    AddressSpace *as = cs ? cs->as : &address_space_memory;
+    uint32_t value = 0x00;
+    for (size_t i = 0; i < 32; i++) {
+        MemTxResult r = address_space_write(as, 0x40002850 + (i * 4),
+                                                   MEMTXATTRS_UNSPECIFIED, &value, 4);
+        if (r != MEMTX_OK) {
+            monitor_printf(mon, " Cannot access memory\n");
+            break;
+        }
+    }
+}
+
 void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, uint64_t size, Error **errp)
 {
     Int128 gpa_region_size;
