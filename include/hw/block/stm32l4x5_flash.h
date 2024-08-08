@@ -38,6 +38,11 @@ OBJECT_DECLARE_SIMPLE_TYPE(STM32L4X5FlashState, STM32L4X5_FLASH)
 #define NUM_PAGES_BANK 256
 #define BANK_SIZE (NUM_PAGES_BANK * PAGE_SIZE)
 
+typedef struct PerBankStruct {
+    void *parent;
+    uint32_t bank;
+} PerBankStruct;
+
 struct STM32L4X5FlashState {
     SysBusDevice parent_obj;
 
@@ -46,6 +51,7 @@ struct STM32L4X5FlashState {
 
     MemoryRegion container;
     MemoryRegion bank[NUM_BANKS];
+    PerBankStruct pbs[NUM_BANKS];
 
     uint32_t *content[NUM_BANKS];
 

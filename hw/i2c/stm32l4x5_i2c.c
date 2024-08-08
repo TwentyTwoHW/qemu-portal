@@ -86,8 +86,6 @@ static void stm32l4x5_i2c_reset(DeviceState *dev)
 
 static void stm32l4x5_i2c_transfer(STM32L4X5I2CState *s)
 {
-    DB_PRINT("Data to send: 0x%x\n", s->i2c_txdr);
-
     i2c_start_send(s->i2c, s->i2c_txdr);
 
     s->buf[s->buf_index++] = s->i2c_txdr;

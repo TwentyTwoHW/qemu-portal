@@ -179,19 +179,12 @@ static const MemoryRegionOps stm32l4x5_flash_mmio_ops = {
 static MemTxResult stm32l4x5_flash_write(void *opaque, hwaddr addr,
                           uint64_t value, unsigned size, MemTxAttrs attrs)
 {
-    STM32L4X5FlashState *s = (STM32L4X5FlashState *) opaque;
+    PerBankStruct *pbs = (PerBankStruct *) opaque;
+    STM32L4X5FlashState *s = (STM32L4X5FlashState *) pbs->parent;
 
     uint32_t val = value;
-    DB_PRINT("orig addr = %lx", addr);
     uint32_t effective_addr = addr >> 2;
-    size_t bank = 0;
-    if (effective_addr & 0x20000) {
-        effective_addr &= 0x1FFFF;
-        bank = 1;
-    }
-    if (s->swapped_banks) {
-        bank = !bank;
-    }
+    uint32_t bank = pbs->bank;
 
     // DB_PRINT("Write flash addr %08x = %08x (prev = %08x)\n", effective_addr, val, s->prev_write_addr);
 
@@ -260,10 +253,13 @@ static void stm32l4x5_flash_realize(DeviceState *dev, Error **errp)
                           "stm32l4x5-flash-mmio", 0x400);
     sysbus_init_mmio(sbd, &s->mmio);
 
-    for (size_t i = 0; i < NUM_BANKS; i++) {
+    for (uint32_t i = 0; i < NUM_BANKS; i++) {
+        s->pbs[i].parent = s;
+        s->pbs[i].bank = i;
+
         char name[30];
-        snprintf(name, 30, "stm32l4x5-flash-eeprom[%lu]", i);
-        memory_region_init_rom_device(&s->bank[i], OBJECT(s), &stm32l4x5_flash_ops, s,
+        snprintf(name, 30, "stm32l4x5-flash-eeprom[%u]", i);
+        memory_region_init_rom_device(&s->bank[i], OBJECT(s), &stm32l4x5_flash_ops, &s->pbs[i],
                               name, BANK_SIZE, errp);
         sysbus_init_mmio(sbd, &s->bank[i]);
         s->content[i] = memory_region_get_ram_ptr(&s->bank[i]);
