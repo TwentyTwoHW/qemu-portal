@@ -206,7 +206,7 @@ static MemTxResult stm32l4x5_flash_write(void *opaque, hwaddr addr,
         return MEMTX_OK;
     }
 
-    if (s->prev_write_addr == 0) {
+    if (s->prev_write_addr == 0 && effective_addr != 1) {
         s->prev_write_addr = effective_addr;
     } else {
         s->prev_write_addr = 0;
