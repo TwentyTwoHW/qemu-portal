@@ -122,15 +122,15 @@ static void stm32l4x5_flash_mmio_write(void *opaque, hwaddr addr,
             }
             if (val & FLASH_CR_MER1) {
                 DB_PRINT("Mass erase 1\n");
-                memset(&s->content[0], 0xFF, BANK_SIZE);
+                memset(s->content[0], 0xFF, BANK_SIZE);
                 if (blk_pwrite(s->blk, 0, BANK_SIZE, s->content[0], 0) < 0) {
                     DB_PRINT("error writing to disk\n");
                 }
             }
             if (val & FLASH_CR_MER2) {
                 DB_PRINT("Mass erase 2\n");
-                memset(&s->content[1], 0xFF, BANK_SIZE);
-                if (blk_pwrite(s->blk, BANK_SIZE, BANK_SIZE, &s->content[1], 0) < 0) {
+                memset(s->content[1], 0xFF, BANK_SIZE);
+                if (blk_pwrite(s->blk, BANK_SIZE, BANK_SIZE, s->content[1], 0) < 0) {
                     DB_PRINT("error writing to disk\n");
                 }
             }
