@@ -18,6 +18,7 @@
 #include "hw/misc/stm32l4x5_rng.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qemu/guest-random.h"
 
 #ifndef STM_RNG_ERR_DEBUG
 #define STM_RNG_ERR_DEBUG 0
@@ -82,8 +83,7 @@ static void stm32l4x5_rng_write(void *opaque, hwaddr addr,
     case RNG_CR:
         if (value & 0x4) { // RNGEN
             s->data_ready = true;
-            // TODO: random data
-            s->rng_dr = 0xDEADBEEF;
+            qemu_guest_getrandom_nofail(&s->rng_dr, 4);
         }
         return;
     default:
