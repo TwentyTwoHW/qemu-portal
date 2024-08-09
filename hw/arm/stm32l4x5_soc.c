@@ -396,6 +396,8 @@ static void stm32l4x5_soc_realize(DeviceState *dev_soc, Error **errp)
     sysbus_mmio_map(busdev, 0, RTC_BASE_ADDRESS);
     // sysbus_connect_irq(busdev, 0, qdev_get_gpio_in(armv7m, RCC_IRQ));
 
+    create_unimplemented_device("OTP",       0x1FFF7000, 0x400);
+
     /* APB1 BUS */
     create_unimplemented_device("TIM2",      0x40000000, 0x400);
     create_unimplemented_device("TIM3",      0x40000400, 0x400);
