@@ -46,18 +46,27 @@ static int stm32l4x5_usart_can_receive(void *opaque)
 {
     STM32L4X5I2CState *s = opaque;
 
-    return (s->i2c_isr & STM_I2C_ISR_RXNE) == 0 && !s->writing && s->nbytes > 0;
+    if ((s->i2c_isr & STM_I2C_ISR_RXNE) == 0 && !s->writing && s->nbytes > 0 && s->buf_index == 0) {
+        return BUF_SIZE;
+    } else {
+        return 0;
+    }
 }
 
 static void stm32l4x5_usart_receive(void *opaque, const uint8_t *buf, int size)
 {
     STM32L4X5I2CState *s = opaque;
 
-    DB_PRINT("Receiving byte %02x\n", buf[0]);
+    DB_PRINT("Receiving %d bytes\n", size);
 
     if (s->i2c_isr & STM_I2C_ISR_RXNE) {
         DB_PRINT("dropping bytes!!\n");
+        return;
     }
+
+    memcpy(s->buf, buf, size);
+    s->buf_index = 1;
+    s->buf_len = size;
 
     if (!s->writing && s->nbytes > 0) {
         s->i2c_isr |= STM_I2C_ISR_RXNE;
@@ -78,6 +87,7 @@ static void stm32l4x5_i2c_reset(DeviceState *dev)
     s->nbytes = 0;
 
     s->buf_index = 0;
+    s->buf_len = 0;
 
     qemu_chr_fe_set_handlers(&s->chr, stm32l4x5_usart_can_receive,
                              stm32l4x5_usart_receive, NULL, NULL,
@@ -116,8 +126,16 @@ static uint64_t stm32l4x5_i2c_read(void *opaque, hwaddr addr,
         // DB_PRINT("isr value = %08x\n", s->i2c_isr);
         return s->i2c_isr;
     case STM_I2C_RXDR:
-        s->i2c_isr &= ~STM_I2C_ISR_RXNE;
-        return s->i2c_rxdr;
+        uint8_t val = s->i2c_rxdr;
+
+        if (s->buf_index == s->buf_len) {
+            s->i2c_isr &= ~STM_I2C_ISR_RXNE;
+            s->buf_index = 0;
+        } else {
+            s->i2c_rxdr = s->buf[s->buf_index++];
+        }
+
+        return val;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
                       __func__, addr);

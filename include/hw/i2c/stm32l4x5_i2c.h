@@ -86,6 +86,7 @@ struct STM32L4X5I2CState {
 
     uint8_t buf[BUF_SIZE];
     size_t buf_index;
+    size_t buf_len;
 
     qemu_irq irq;
     I2CBus *i2c;
